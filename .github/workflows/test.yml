@@ -20,7 +20,7 @@ jobs:
     timeout-minutes: 15
     env:
       FAST: "1"
-      FAST_ECMWF: ${{ inputs.ecmwf && '1' || '0' }}
+      ECMWF: ${{ inputs.ecmwf && '1' || '0' }}
     steps:
       - name: Get the repository files
         uses: actions/checkout@v4

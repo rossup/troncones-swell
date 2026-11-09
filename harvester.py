@@ -66,16 +66,17 @@ HISTORY_MAX_ENTRIES = 160   # ~40 days of 2x-daily runs, two sources each
 
 # FAST=1: quick test run (~2-3 min). 6 GEFS members, days 0-3, GEFS only,
 # written to test_out/ so the live page in docs/ is never touched.
-# Add FAST_ECMWF=1 to also pull ECMWF for days 0-3 (adds a few minutes).
 FAST = os.environ.get("FAST") == "1"
-FAST_ECMWF = os.environ.get("FAST_ECMWF") == "1"
+# ECMWF is off by default: its open data has no swell partitions, only a
+# mean direction over all waves. ECMWF=1 switches it back on (full or FAST).
+USE_ECMWF = os.environ.get("ECMWF") == "1"
 if FAST:
     GEFS_MEMBERS = GEFS_MEMBERS[:6]
     GEFS_HOURS = list(range(0, 73, 6))
     ECMWF_STEPS = list(range(0, 73, 12))
     OUT_DIR = "test_out"
     print(f"FAST mode: {len(GEFS_MEMBERS)} GEFS members x {len(GEFS_HOURS)} "
-          f"hours, ECMWF {'on' if FAST_ECMWF else 'off'}, output -> {OUT_DIR}/")
+          f"hours, ECMWF {'on' if USE_ECMWF else 'off'}, output -> {OUT_DIR}/")
 
 # ----------------------------------------------------------------------
 # Small helpers
@@ -601,8 +602,8 @@ def main():
     sources, errors = [], []
 
     for label, fn in (("GEFS", fetch_gefs), ("ECMWF", fetch_ecmwf)):
-        if FAST and label == "ECMWF" and not FAST_ECMWF:
-            print("ECMWF: skipped (FAST mode)")
+        if label == "ECMWF" and not USE_ECMWF:
+            print("ECMWF: skipped (set ECMWF=1 to include)")
             continue
         try:
             sources.append(fn())

@@ -2,6 +2,11 @@ name: Swell forecast
 
 on:
   workflow_dispatch:
+    inputs:
+      ecmwf:
+        description: "Also pull ECMWF (no swell partitions; adds ~15 min)"
+        type: boolean
+        default: false
   schedule:
     - cron: "45 10 * * *"
     - cron: "45 22 * * *"
@@ -17,6 +22,9 @@ jobs:
   harvest:
     runs-on: ubuntu-latest
     timeout-minutes: 45
+    env:
+      # Scheduled runs have no inputs, so ECMWF stays off unless asked for.
+      ECMWF: ${{ inputs.ecmwf && '1' || '0' }}
     steps:
       - name: Get the repository files
         uses: actions/checkout@v4
