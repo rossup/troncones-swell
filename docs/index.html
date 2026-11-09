@@ -64,7 +64,11 @@
   .dwc{flex:0 0 118px;background:#fff;border:1px solid var(--line);border-radius:8px;
        padding:8px 6px;text-align:center}
   .dwc .d{font-size:11px;color:var(--muted);letter-spacing:.3px}
-  .dwc .hs{font-family:'IBM Plex Mono',monospace;font-size:15px;font-weight:500;margin-top:3px}
+  .dwc .hs{font-family:'IBM Plex Mono',monospace;font-size:17px;font-weight:500;margin-top:3px}
+  .dwc .hslab{font-size:10px;color:var(--muted);letter-spacing:.4px;text-transform:uppercase}
+  .dwc .sea{font-family:'IBM Plex Mono',monospace;font-size:11.5px;color:var(--muted);margin-top:3px}
+  .dwc .junk{font-family:'IBM Plex Mono',monospace;font-size:11.5px;color:var(--muted)}
+  .dwc .flat{font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--muted);margin-top:2px}
   .dwc .face{font-family:'IBM Plex Mono',monospace;font-size:12.5px;font-weight:500;margin-top:2px}
   .dwc .avg{font-family:'IBM Plex Mono',monospace;font-size:11.5px;color:var(--muted);margin-top:1px}
   .dwc .rng{font-family:'IBM Plex Mono',monospace;font-size:11.5px;color:var(--muted)}
@@ -96,7 +100,8 @@
 
   <h2>The cone</h2>
   <p class="sub" id="conesub">Sixteen days of open-ocean swell at the offshore point.
-     Bands show where the middle 50% and 80% of the ensemble members land — the honest width of the forecast. Times are local (UTC\u22126).</p>
+     Bands show where the middle 50% and 80% of the ensemble members land — the honest width of the forecast.
+     This is total sea state, every direction included; the day-by-day strip below filters it down to what Troncones can actually use. Times are local (UTC−6).</p>
   <div id="cone"></div>
   <div class="legend" id="legend">
     <span class="key"><span class="swatch" style="background:var(--teal)"></span>GEFS median</span>
@@ -106,7 +111,12 @@
   </div>
 
   <h2>Day by day</h2>
-  <p class="sub" id="dwsub">Median offshore size and period at each day's peak — with the ensemble average beneath it, and the min\u2013max span of individual members. Then swell direction, and the dawn wind (sampled near 7 AM local). The ~m faces line is a provisional physics estimate, not yet calibrated to this break. Offshore breeze on this coast blows from the NE quadrant.</p>
+  <p class="sub" id="dwsub">The headline number is <b>swell pointed at the break</b>: each swell train is
+     weighted by how squarely it sits in the 220–250° window, windsea is thrown out, and what survives is combined by energy.
+     Underneath it, <i>sea</i> is the honest total significant height from every direction — the gap between the two is energy that will not break here.
+     Then the ensemble average and the min–max span of individual members, the direction of the train actually driving the surf,
+     and the dawn wind (sampled near 7 AM local). The ~m faces line is a provisional physics estimate, not yet calibrated to this break.
+     Offshore breeze on this coast blows from the NE quadrant.</p>
   <div class="dw" id="dirwind"></div>
 
   <h2>Probability of a swell</h2>
@@ -133,12 +143,12 @@
 
   <footer id="foot">
     Wave data: NOAA GEFS-Wave (public domain) · ECMWF open data © ECMWF, CC-BY-4.0, modified ·
-    Statistics computed independently of either agency · A personal instrument, not navigation advice. · instrument v16
+    Statistics computed independently of either agency · A personal instrument, not navigation advice. · instrument v17
   </footer>
 </div>
 
 <script>
-const ABS = "https://rossup.github.io/troncones-swell/";
+const ABS = "https://mbensal.github.io/troncones-swell/";
 const TZ_OFFSET_H = -6; // Guerrero local time
 
 async function getJSON(name){
@@ -216,7 +226,6 @@ function drawCone(F, showEcBand){
   const bands = [];
   days.forEach((k, i) => {
     if(i % 2 === 0) return;
-    const next = days[i+1] ? days[i+1] : k;
     bands.push({type:"rect", xref:"x", yref:"paper",
       x0: k + " 00:00", x1: (days[i+1] || k) + " 23:59",
       y0: 0, y1: 1, fillcolor: "rgba(31,41,55,0.04)",
@@ -260,56 +269,92 @@ function windClass(wdir){
   if(d > 120) return ["onshore","w-on"];
   return ["cross","w-x"];
 }
+function addLine(cell, cls, text, title){
+  const el = document.createElement("div");
+  el.className = cls;
+  el.textContent = text;
+  if(title) el.title = title;
+  cell.appendChild(el);
+  return el;
+}
+
 function drawDirWind(src){
   const box = document.getElementById("dirwind");
   box.innerHTML = "";
+  // surf_* only exists for sources that publish spectral partitions.
+  const surfStats = src.surf_hs_stats && src.surf_hs_stats.median
+                  ? src.surf_hs_stats.median : null;
   const byDay = {};
   src.times.forEach((iso,j)=>{ const k=localDayKey(iso); (byDay[k]=byDay[k]||[]).push(j); });
   Object.keys(byDay).sort().forEach(k=>{
+    // One representative moment per day, chosen on the surf-relevant peak
+    // where we have it so the headline and its supporting numbers agree.
+    const rank = surfStats || src.hs_stats.median;
     let jp = byDay[k][0], best = -1;
-    byDay[k].forEach(j=>{ const v=src.hs_stats.median[j];
+    byDay[k].forEach(j=>{ const v = rank[j];
       if(v!=null && v>best){ best=v; jp=j; } });
     let jm = byDay[k][0], bd = 99;
     byDay[k].forEach(j=>{ const hh=parseUTC(src.times[j]).getUTCHours();
       const d=Math.abs(hh-13); if(d<bd){ bd=d; jm=j; } });
-    const tp = src.tp_median ? src.tp_median[jp] : null;
-    const dir = src.dir_median ? src.dir_median[jp] : null;
+
+    const surf = surfStats ? surfStats[jp] : null;
+    const sea  = src.hs_stats.median[jp];
+    const tp   = surfStats
+               ? (src.surf_tp_median ? src.surf_tp_median[jp] : null)
+               : (src.tp_median ? src.tp_median[jp] : null);
+    const dir  = surfStats
+               ? (src.surf_dir_median ? src.surf_dir_median[jp] : null)
+               : (src.dir_median ? src.dir_median[jp] : null);
+    const headline = surfStats ? surf : (best >= 0 ? best : null);
+
     const cell = document.createElement("div"); cell.className = "dwc";
-    const dayEl = document.createElement("div"); dayEl.className="d";
-    dayEl.textContent = dayLabel(k); cell.appendChild(dayEl);
-    const hsEl = document.createElement("div"); hsEl.className="hs";
-    hsEl.textContent = best >= 0 ? best.toFixed(2) + " m" : "\u2014";
-    hsEl.title = "ensemble median at the day's peak";
-    cell.appendChild(hsEl);
-    if(tp != null){
-      const perEl = document.createElement("div"); perEl.className = "per";
-      perEl.textContent = Math.round(tp) + " s";
-      perEl.title = "median peak period at the day's peak: " + tp + " s";
-      cell.appendChild(perEl);
+    addLine(cell, "d", dayLabel(k));
+
+    if(headline == null){
+      addLine(cell, "hs", "\u2014");
+      addLine(cell, "hslab", surfStats ? "no partition data" : "swell");
+    } else if(surfStats && headline === 0){
+      addLine(cell, "hs", "0.00 m");
+      addLine(cell, "hslab", "in window");
+      addLine(cell, "flat", "nothing in window",
+        "Every swell train this day sits outside 205\u2013265\u00B0, so none of " +
+        "the energy offshore is pointed at the break.");
+    } else {
+      addLine(cell, "hs", headline.toFixed(2) + " m",
+        surfStats ? "direction-weighted swell height at the day's surf peak"
+                  : "ensemble median at the day's peak");
+      addLine(cell, "hslab", surfStats ? "in window" : "swell");
     }
-    const ff = facesM(best >= 0 ? best : null, tp);
-    if(ff != null){
-      const fEl = document.createElement("div"); fEl.className = "face";
-      fEl.textContent = "~" + ff.toFixed(1) + " m faces";
-      fEl.title = "provisional breaker estimate from median size and period " +
-                  "(Komar\u2013Gaughan) \u2014 not yet calibrated to this break";
-      cell.appendChild(fEl);
-    }
-    if(src.hs_members && best >= 0){
-      const col = src.hs_members.map(r => r[jp]).filter(v => v != null);
+
+    if(tp != null)
+      addLine(cell, "per", Math.round(tp) + " s",
+        (surfStats ? "period of the swell train driving the surf: "
+                   : "median peak period at the day's peak: ") + tp + " s");
+
+    const ff = facesM(headline, tp);
+    if(ff != null)
+      addLine(cell, "face", "~" + ff.toFixed(1) + " m faces",
+        "provisional breaker estimate (Komar\u2013Gaughan) from the " +
+        "direction-weighted height and its period \u2014 not yet calibrated to this break");
+
+    if(surfStats && sea != null)
+      addLine(cell, "sea", "sea " + sea.toFixed(2) + " m",
+        "total significant height from all directions, windsea included " +
+        "\u2014 what the raw model reports");
+
+    const members = surfStats ? src.surf_hs_members : src.hs_members;
+    if(members && headline != null){
+      const col = members.map(r => r[jp]).filter(v => v != null);
       if(col.length >= 5){
         const mn = Math.min.apply(null, col), mx = Math.max.apply(null, col);
         const av = col.reduce((a,b)=>a+b,0) / col.length;
-        const avEl = document.createElement("div"); avEl.className = "avg";
-        avEl.textContent = "avg " + av.toFixed(2);
-        avEl.title = "ensemble mean (average of all members)";
-        cell.appendChild(avEl);
-        const rgEl = document.createElement("div"); rgEl.className = "rng";
-        rgEl.textContent = mn.toFixed(2) + " \u2013 " + mx.toFixed(2);
-        rgEl.title = "lowest and highest single members";
-        cell.appendChild(rgEl);
+        addLine(cell, "avg", "avg " + av.toFixed(2),
+          "ensemble mean (average of all members)");
+        addLine(cell, "rng", mn.toFixed(2) + " \u2013 " + mx.toFixed(2),
+          "lowest and highest single members");
       }
     }
+
     const swEl = document.createElement("div"); swEl.className="sw";
     if(dir != null){
       const ar = document.createElement("span"); ar.className="ar";
@@ -317,8 +362,20 @@ function drawDirWind(src){
       ar.style.transform = "rotate(" + ((dir+180)%360) + "deg)";
       swEl.appendChild(ar);
       swEl.appendChild(document.createTextNode(" " + compass(dir) + " " + dir + "\u00B0"));
+      swEl.title = surfStats
+        ? "direction of the swell train driving the surf"
+        : "median wave direction";
     } else swEl.textContent = "\u2014";
     cell.appendChild(swEl);
+
+    if(src.windsea_median){
+      const ws = src.windsea_median[jp];
+      if(ws != null && ws > 0)
+        addLine(cell, "junk", "windsea " + ws.toFixed(2) + " m",
+          "short-period wind chop riding on top \u2014 excluded from the " +
+          "headline, but it degrades the surface");
+    }
+
     if(src.wind_median){
       const w = src.wind_median[jm], wd = src.wdir_median ? src.wdir_median[jm] : null;
       const wEl = document.createElement("div"); wEl.className="wd";
@@ -333,11 +390,19 @@ function drawDirWind(src){
     }
     box.appendChild(cell);
   });
-  if(!src.wind_median){
+
+  const notes = [];
+  if(!surfStats)
+    notes.push("This source publishes no spectral partitions, so these cards fall " +
+      "back to total sea state from every direction. The direction-weighted " +
+      "reading needs GEFS.");
+  if(!src.wind_median)
+    notes.push("Wind joins this strip after the next harvest run picks up the upgraded harvester.");
+  notes.forEach(text=>{
     const n = document.createElement("p"); n.className = "footnote";
-    n.textContent = "Wind joins this strip after the next harvest run picks up the upgraded harvester.";
+    n.textContent = text;
     box.parentNode.insertBefore(n, box.nextSibling);
-  }
+  });
 }
 function dailyProbability(src, hsMin, tpMin){
   const byDay = {};
