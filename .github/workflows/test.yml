@@ -49,6 +49,13 @@ jobs:
               print("  keys:", sorted(s.keys()))
               print("  hs median:", s["hs_stats"]["median"][:8])
               print("  dir:      ", s["dir_median"][:8])
+              for n in (1, 2, 3):
+                  if f"sw{n}_hs_median" in s:
+                      print(f"  swell {n}: hs {s[f'sw{n}_hs_median'][:6]}")
+                      print(f"           tp {s[f'sw{n}_tp_median'][:6]}")
+                      print(f"          dir {s[f'sw{n}_dir_mean'][:6]}  spread {s[f'sw{n}_dir_spread'][:6]}")
+              if "windsea_hs_median" in s:
+                  print("  windsea hs:", s["windsea_hs_median"][:6])
           EOF
 
       - name: Upload results
