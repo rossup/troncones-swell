@@ -1,0 +1,58 @@
+name: Quick test
+
+# Manual-only fast run of the harvester (FAST=1). Never commits anything;
+# results are attached to the run as a downloadable "test_out" artifact.
+
+on:
+  workflow_dispatch:
+    inputs:
+      ecmwf:
+        description: "Also pull ECMWF (days 0-3, adds a few minutes)"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  quick-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      FAST: "1"
+      FAST_ECMWF: ${{ inputs.ecmwf && '1' || '0' }}
+    steps:
+      - name: Get the repository files
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: .github/workflows/test.yml
+
+      - name: Install libraries
+        run: pip install --quiet ecmwf-opendata eccodes numpy requests
+
+      - name: Run the harvester (fast)
+        run: python -u harvester.py
+
+      - name: Summarize output
+        run: |
+          python - <<'EOF'
+          import json
+          f = json.load(open("test_out/forecast.json"))
+          print("errors:", f["errors"])
+          for name, s in f["sources"].items():
+              print(f"\n[{name}] cycle {s['cycle_utc']}, {s['n_members']} members, {len(s['times'])} steps")
+              print("  keys:", sorted(s.keys()))
+              print("  hs median:", s["hs_stats"]["median"][:8])
+              print("  dir:      ", s["dir_median"][:8])
+          EOF
+
+      - name: Upload results
+        uses: actions/upload-artifact@v4
+        with:
+          name: test_out
+          path: test_out/
