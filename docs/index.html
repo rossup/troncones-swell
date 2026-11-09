@@ -61,7 +61,7 @@
   footer{margin-top:44px;border-top:1px solid var(--line);padding-top:14px;
          font-size:12px;color:var(--muted)}
   .dw{display:flex;gap:6px;overflow-x:auto;padding-bottom:4px}
-  .dwc{flex:0 0 118px;background:#fff;border:1px solid var(--line);border-radius:8px;
+  .dwc{flex:0 0 132px;background:#fff;border:1px solid var(--line);border-radius:8px;
        padding:8px 6px;text-align:center}
   .dwc .d{font-size:11px;color:var(--muted);letter-spacing:.3px}
   .dwc .hs{font-family:'IBM Plex Mono',monospace;font-size:15px;font-weight:500;margin-top:3px}
@@ -72,6 +72,13 @@
   .dwc .sw{font-size:13.5px;margin-top:3px}
   .dwc .ar{display:inline-block;font-size:13px}
   .dwc .wd{font-family:'IBM Plex Mono',monospace;font-size:12px;margin-top:3px}
+  .dwc .swp{border-top:1px solid var(--line);margin-top:6px;padding-top:4px;text-align:left}
+  .dwc .swr{font-family:'IBM Plex Mono',monospace;font-size:11px;line-height:1.35;margin-top:3px}
+  .dwc .swr .n{display:inline-block;min-width:16px;color:var(--muted)}
+  .dwc .swr .dd{padding-left:16px;color:var(--ink)}
+  .dwc .swr .sp{color:var(--muted)}
+  .dwc .swr.small{color:var(--muted)}
+  .dwc .swr.small .dd{color:var(--muted)}
   .w-off{color:var(--teal);font-weight:500}
   .w-on{color:#566069;font-weight:500}
   .w-x{color:var(--muted)}
@@ -106,7 +113,7 @@
   </div>
 
   <h2>Day by day</h2>
-  <p class="sub" id="dwsub">Median offshore size and period at each day's peak — with the ensemble average beneath it, and the min\u2013max span of individual members. Then swell direction, and the dawn wind (sampled near 7 AM local). The ~m faces line is a provisional physics estimate, not yet calibrated to this break. Offshore breeze on this coast blows from the NE quadrant.</p>
+  <p class="sub" id="dwsub">Median offshore size and period at each day's peak — with the ensemble average beneath it, and the min–max span of individual members. Then the combined direction, the individual swell trains (1 = biggest; height, period, direction, ± member spread; days 0–10), and the dawn wind (sampled near 7 AM local). The ~m faces line is a provisional physics estimate, not yet calibrated to this break. Offshore breeze on this coast blows from the NE quadrant.</p>
   <div class="dw" id="dirwind"></div>
 
   <h2>Probability of a swell</h2>
@@ -318,7 +325,44 @@ function drawDirWind(src){
       swEl.appendChild(ar);
       swEl.appendChild(document.createTextNode(" " + compass(dir) + " " + dir + "\u00B0"));
     } else swEl.textContent = "\u2014";
+    swEl.title = "direction of the combined sea (primary wave direction)";
     cell.appendChild(swEl);
+    // Individual swell trains at the same timestep (GEFS only, days 0-10).
+    if(src.sw1_hs_median){
+      const box2 = document.createElement("div"); box2.className = "swp";
+      let any = false;
+      [1,2,3].forEach(n=>{
+        const h = src["sw"+n+"_hs_median"][jp], t = src["sw"+n+"_tp_median"][jp];
+        const d = src["sw"+n+"_dir_mean"][jp], sp = src["sw"+n+"_dir_spread"][jp];
+        if(h == null) return;
+        any = true;
+        const r = document.createElement("div");
+        r.className = "swr" + (h < 0.2 ? " small" : "");
+        const top = document.createElement("div");
+        const num = document.createElement("span"); num.className = "n"; num.textContent = n;
+        top.appendChild(num);
+        top.appendChild(document.createTextNode(h.toFixed(2) + "m " +
+                        (t != null ? Math.round(t) + "s" : "")));
+        r.appendChild(top);
+        const bot = document.createElement("div"); bot.className = "dd";
+        if(d != null){
+          const ar = document.createElement("span"); ar.className = "ar";
+          ar.textContent = "\u2191";
+          ar.style.transform = "rotate(" + ((d+180)%360) + "deg)";
+          bot.appendChild(ar);
+          bot.appendChild(document.createTextNode(" " + compass(d) + " " + d + "\u00B0 "));
+          if(sp != null){
+            const spEl = document.createElement("span"); spEl.className = "sp";
+            spEl.textContent = "\u00B1" + sp; bot.appendChild(spEl);
+          }
+        } else bot.textContent = "\u2014";
+        r.appendChild(bot);
+        r.title = "swell " + n + " (ensemble median height & period, mean direction; " +
+                  "\u00B1 = spread across members in degrees)";
+        box2.appendChild(r);
+      });
+      if(any) cell.appendChild(box2);
+    }
     if(src.wind_median){
       const w = src.wind_median[jm], wd = src.wdir_median ? src.wdir_median[jm] : null;
       const wEl = document.createElement("div"); wEl.className="wd";
