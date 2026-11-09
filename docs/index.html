@@ -66,8 +66,7 @@
   .dwc .d{font-size:11px;color:var(--muted);letter-spacing:.3px}
   .dwc .hs{font-family:'IBM Plex Mono',monospace;font-size:15px;font-weight:500;margin-top:3px}
   .dwc .face{font-family:'IBM Plex Mono',monospace;font-size:12.5px;font-weight:500;margin-top:2px}
-  .dwc .avg{font-family:'IBM Plex Mono',monospace;font-size:11.5px;color:var(--muted);margin-top:1px}
-  .dwc .rng{font-family:'IBM Plex Mono',monospace;font-size:11.5px;color:var(--muted)}
+  .dwc .tag{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.6px;margin-top:1px}
   .dwc .per{font-family:'IBM Plex Mono',monospace;font-size:12px;margin-top:2px}
   .dwc .sw{font-size:13.5px;margin-top:3px}
   .dwc .ar{display:inline-block;font-size:13px}
@@ -76,7 +75,7 @@
   .dwc .swr{font-family:'IBM Plex Mono',monospace;font-size:11px;line-height:1.35;margin-top:3px}
   .dwc .swr .n{display:inline-block;min-width:16px;color:var(--muted)}
   .dwc .swr .dd{padding-left:16px;color:var(--ink)}
-  .dwc .swr .sp{color:var(--muted)}
+  .dwc .sp{color:var(--muted);font-size:11.5px}
   .dwc .swr.small{color:var(--muted)}
   .dwc .swr.small .dd{color:var(--muted)}
   .w-off{color:var(--teal);font-weight:500}
@@ -113,7 +112,7 @@
   </div>
 
   <h2>Day by day</h2>
-  <p class="sub" id="dwsub">Median offshore size and period at each day's peak — with the ensemble average beneath it, and the min–max span of individual members. Then the combined direction, the individual swell trains (1 = biggest; height, period, direction, ± member spread; days 0–10), and the dawn wind (sampled near 7 AM local). The ~m faces line is a provisional physics estimate, not yet calibrated to this break. Offshore breeze on this coast blows from the NE quadrant.</p>
+  <p class="sub" id="dwsub">Each card leads with the primary swell (swell 1, the biggest swell train) at the hour it peaks that day: median height, period, a provisional ~m faces estimate, and direction with ± the spread across ensemble members. Below it, swells 2 and 3 at the same hour, then the dawn wind (sampled near 7 AM local). Swell breakdowns run to day 10; later cards show the combined sea. The faces line is not yet calibrated to this break. Offshore breeze on this coast blows from the NE quadrant.</p>
   <div class="dw" id="dirwind"></div>
 
   <h2>Probability of a swell</h2>
@@ -267,121 +266,101 @@ function windClass(wdir){
   if(d > 120) return ["onshore","w-on"];
   return ["cross","w-x"];
 }
+// Small DOM helpers for the day cards.
+function el(tag, cls, text, title){
+  const e = document.createElement(tag);
+  if(cls) e.className = cls;
+  if(text != null) e.textContent = text;
+  if(title) e.title = title;
+  return e;
+}
+function dirLine(cls, d, spread){
+  // Arrow points where the swell travels; label is where it comes from.
+  const line = el("div", cls);
+  if(d == null){ line.textContent = "—"; return line; }
+  const ar = el("span", "ar", "↑");
+  ar.style.transform = "rotate(" + ((d + 180) % 360) + "deg)";
+  line.appendChild(ar);
+  line.appendChild(document.createTextNode(" " + compass(d) + " " + d + "° "));
+  if(spread != null) line.appendChild(el("span", "sp", "±" + spread));
+  return line;
+}
+
+// Day cards. Top half: the primary swell (swell 1) at the hour of the day
+// when it peaks. Days past the partition horizon (day 10) fall back to the
+// combined sea and say so. Below: swells 2-3 at the same hour, then dawn wind.
 function drawDirWind(src){
   const box = document.getElementById("dirwind");
   box.innerHTML = "";
+  const sw = n => key => src["sw" + n + "_" + key];
   const byDay = {};
-  src.times.forEach((iso,j)=>{ const k=localDayKey(iso); (byDay[k]=byDay[k]||[]).push(j); });
-  Object.keys(byDay).sort().forEach(k=>{
-    let jp = byDay[k][0], best = -1;
-    byDay[k].forEach(j=>{ const v=src.hs_stats.median[j];
-      if(v!=null && v>best){ best=v; jp=j; } });
-    let jm = byDay[k][0], bd = 99;
-    byDay[k].forEach(j=>{ const hh=parseUTC(src.times[j]).getUTCHours();
-      const d=Math.abs(hh-13); if(d<bd){ bd=d; jm=j; } });
-    const tp = src.tp_median ? src.tp_median[jp] : null;
-    const dir = src.dir_median ? src.dir_median[jp] : null;
-    const cell = document.createElement("div"); cell.className = "dwc";
-    const dayEl = document.createElement("div"); dayEl.className="d";
-    dayEl.textContent = dayLabel(k); cell.appendChild(dayEl);
-    const hsEl = document.createElement("div"); hsEl.className="hs";
-    hsEl.textContent = best >= 0 ? best.toFixed(2) + " m" : "\u2014";
-    hsEl.title = "ensemble median at the day's peak";
-    cell.appendChild(hsEl);
-    if(tp != null){
-      const perEl = document.createElement("div"); perEl.className = "per";
-      perEl.textContent = Math.round(tp) + " s";
-      perEl.title = "median peak period at the day's peak: " + tp + " s";
-      cell.appendChild(perEl);
-    }
-    const ff = facesM(best >= 0 ? best : null, tp);
-    if(ff != null){
-      const fEl = document.createElement("div"); fEl.className = "face";
-      fEl.textContent = "~" + ff.toFixed(1) + " m faces";
-      fEl.title = "provisional breaker estimate from median size and period " +
-                  "(Komar\u2013Gaughan) \u2014 not yet calibrated to this break";
-      cell.appendChild(fEl);
-    }
-    if(src.hs_members && best >= 0){
-      const col = src.hs_members.map(r => r[jp]).filter(v => v != null);
-      if(col.length >= 5){
-        const mn = Math.min.apply(null, col), mx = Math.max.apply(null, col);
-        const av = col.reduce((a,b)=>a+b,0) / col.length;
-        const avEl = document.createElement("div"); avEl.className = "avg";
-        avEl.textContent = "avg " + av.toFixed(2);
-        avEl.title = "ensemble mean (average of all members)";
-        cell.appendChild(avEl);
-        const rgEl = document.createElement("div"); rgEl.className = "rng";
-        rgEl.textContent = mn.toFixed(2) + " \u2013 " + mx.toFixed(2);
-        rgEl.title = "lowest and highest single members";
-        cell.appendChild(rgEl);
-      }
-    }
-    const swEl = document.createElement("div"); swEl.className="sw";
-    if(dir != null){
-      const ar = document.createElement("span"); ar.className="ar";
-      ar.textContent = "\u2191";
-      ar.style.transform = "rotate(" + ((dir+180)%360) + "deg)";
-      swEl.appendChild(ar);
-      swEl.appendChild(document.createTextNode(" " + compass(dir) + " " + dir + "\u00B0"));
-    } else swEl.textContent = "\u2014";
-    swEl.title = "direction of the combined sea (primary wave direction)";
-    cell.appendChild(swEl);
-    // Individual swell trains at the same timestep (GEFS only, days 0-10).
-    if(src.sw1_hs_median){
-      const box2 = document.createElement("div"); box2.className = "swp";
-      let any = false;
-      [1,2,3].forEach(n=>{
-        const h = src["sw"+n+"_hs_median"][jp], t = src["sw"+n+"_tp_median"][jp];
-        const d = src["sw"+n+"_dir_mean"][jp], sp = src["sw"+n+"_dir_spread"][jp];
+  src.times.forEach((iso, j) => { const k = localDayKey(iso); (byDay[k] = byDay[k] || []).push(j); });
+
+  Object.keys(byDay).sort().forEach(k => {
+    const js = byDay[k];
+    const hasSwell = !!src.sw1_hs_median && js.some(j => src.sw1_hs_median[j] != null);
+    const hsArr = hasSwell ? src.sw1_hs_median : src.hs_stats.median;
+    const tpArr = hasSwell ? src.sw1_tp_median : src.tp_median;
+
+    let jp = js[0], best = -1;                       // hour of the day's peak
+    js.forEach(j => { const v = hsArr[j]; if(v != null && v > best){ best = v; jp = j; } });
+    let jm = js[0], bd = 99;                          // step nearest 13Z (~7 AM local)
+    js.forEach(j => { const d = Math.abs(parseUTC(src.times[j]).getUTCHours() - 13);
+                      if(d < bd){ bd = d; jm = j; } });
+
+    const hs = best >= 0 ? best : null, tp = tpArr ? tpArr[jp] : null;
+    const cell = el("div", "dwc");
+    cell.appendChild(el("div", "d", dayLabel(k)));
+    cell.appendChild(el("div", "tag", hasSwell ? "primary swell" : "all waves",
+      hasSwell ? "swell 1: the most energetic swell train in each ensemble member"
+               : "past day 10 the model has no swell breakdown; combined sea shown"));
+    cell.appendChild(el("div", "hs", hs != null ? hs.toFixed(2) + " m" : "—",
+                        "ensemble median height at the day's peak"));
+    if(tp != null) cell.appendChild(el("div", "per", Math.round(tp) + " s",
+                                       "ensemble median period: " + tp + " s"));
+    const ff = facesM(hs, tp);
+    if(ff != null) cell.appendChild(el("div", "face", "~" + ff.toFixed(1) + " m faces",
+      "provisional breaker estimate from height and period (Komar–Gaughan) " +
+      "— not yet calibrated to this break"));
+    cell.appendChild(hasSwell
+      ? dirLine("sw", sw(1)("dir_mean")[jp], sw(1)("dir_spread")[jp])
+      : dirLine("sw", src.dir_median ? src.dir_median[jp] : null, null));
+    cell.lastChild.title = hasSwell
+      ? "swell 1 direction (from); ± = spread across members in degrees"
+      : "primary wave direction of the combined sea (from)";
+
+    if(hasSwell){
+      const lower = el("div", "swp");
+      [2, 3].forEach(n => {
+        const h = sw(n)("hs_median")[jp];
         if(h == null) return;
-        any = true;
-        const r = document.createElement("div");
-        r.className = "swr" + (h < 0.2 ? " small" : "");
-        const top = document.createElement("div");
-        const num = document.createElement("span"); num.className = "n"; num.textContent = n;
-        top.appendChild(num);
+        const t = sw(n)("tp_median")[jp];
+        const r = el("div", "swr" + (h < 0.2 ? " small" : ""), null,
+          "swell " + n + ": ensemble median height & period, mean direction; " +
+          "± = spread across members in degrees");
+        const top = el("div");
+        top.appendChild(el("span", "n", String(n)));
         top.appendChild(document.createTextNode(h.toFixed(2) + "m " +
-                        (t != null ? Math.round(t) + "s" : "")));
+                                                (t != null ? Math.round(t) + "s" : "")));
         r.appendChild(top);
-        const bot = document.createElement("div"); bot.className = "dd";
-        if(d != null){
-          const ar = document.createElement("span"); ar.className = "ar";
-          ar.textContent = "\u2191";
-          ar.style.transform = "rotate(" + ((d+180)%360) + "deg)";
-          bot.appendChild(ar);
-          bot.appendChild(document.createTextNode(" " + compass(d) + " " + d + "\u00B0 "));
-          if(sp != null){
-            const spEl = document.createElement("span"); spEl.className = "sp";
-            spEl.textContent = "\u00B1" + sp; bot.appendChild(spEl);
-          }
-        } else bot.textContent = "\u2014";
-        r.appendChild(bot);
-        r.title = "swell " + n + " (ensemble median height & period, mean direction; " +
-                  "\u00B1 = spread across members in degrees)";
-        box2.appendChild(r);
+        r.appendChild(dirLine("dd", sw(n)("dir_mean")[jp], sw(n)("dir_spread")[jp]));
+        lower.appendChild(r);
       });
-      if(any) cell.appendChild(box2);
+      if(lower.childNodes.length) cell.appendChild(lower);
     }
+
     if(src.wind_median){
       const w = src.wind_median[jm], wd = src.wdir_median ? src.wdir_median[jm] : null;
-      const wEl = document.createElement("div"); wEl.className="wd";
+      const wEl = el("div", "wd");
       if(w != null){
-        const kt = Math.round(w * 1.944);
         const [label, cls] = windClass(wd);
-        wEl.textContent = kt + " kt " + compass(wd);
-        if(label){ const t=document.createElement("div"); t.className=cls;
-          t.textContent = label; wEl.appendChild(t); }
-      } else wEl.textContent = "\u2014";
+        wEl.textContent = Math.round(w * 1.944) + " kt " + compass(wd);
+        if(label) wEl.appendChild(el("div", cls, label));
+      } else wEl.textContent = "—";
       cell.appendChild(wEl);
     }
     box.appendChild(cell);
   });
-  if(!src.wind_median){
-    const n = document.createElement("p"); n.className = "footnote";
-    n.textContent = "Wind joins this strip after the next harvest run picks up the upgraded harvester.";
-    box.parentNode.insertBefore(n, box.nextSibling);
-  }
 }
 function dailyProbability(src, hsMin, tpMin){
   const byDay = {};
